@@ -16,8 +16,8 @@ use crate::{device_maps::{
         MMIODeviceMap, 
         MMIODeviceRegion
     }
-}, machine_config::MachineConfig, vcpu::VCPU};
-use std::ptr;
+}, irq_handler::IRQHandler, machine_config::MachineConfig, vcpu::VCPU};
+use std::{cell::RefCell, ptr, rc::Rc};
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 
 pub enum CrashReason {
@@ -36,23 +36,27 @@ pub struct VirtualMachine{
     io_map: IODeviceMap,
     mmio_map: MMIODeviceMap,
     memory_regions: Vec<*mut u8>,
+    irq_handler: Rc<RefCell<IRQHandler>>
 }
 
 impl VirtualMachine{
     pub fn new(init_mem_image: Vec<u8>, machine_config: MachineConfig) -> Self{
         let kvm: Kvm = Kvm::new().unwrap();
         let vm = kvm.create_vm().unwrap();
+        vm.create_irq_chip().unwrap();
 
         let io_map = IODeviceMap::new();
         let mmio_map = MMIODeviceMap::new();
+        let irq_handler = Rc::new(RefCell::new(IRQHandler::new()));
 
         let vcpu = VCPU::new(&vm, machine_config.code_entry);
         let mut this = Self {
             vcpu,
-            vm: vm,
+            vm,
             io_map,
             mmio_map,
-            memory_regions: vec![]
+            memory_regions: vec![],
+            irq_handler: Rc::clone(&irq_handler),
         };
 
         for mem in machine_config.memory_regions {
@@ -82,11 +86,13 @@ impl VirtualMachine{
             }
         }
 
-        for mmio_device in machine_config.mmio_devices {
+        for mut mmio_device in machine_config.mmio_devices {
+            mmio_device.irq_handler(Rc::clone(&irq_handler));
             this.register_mmio_device(mmio_device);
         }
 
-        for io_device in machine_config.io_devices {
+        for mut io_device in machine_config.io_devices {
+            io_device.irq_handler(Rc::clone(&irq_handler));
             this.register_io_device(io_device);
         }
 
@@ -101,7 +107,7 @@ impl VirtualMachine{
                 PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS,
                 -1,
-                self.memory_regions.len() as i64,
+                0,
             )
         };
 
@@ -113,7 +119,7 @@ impl VirtualMachine{
         self.memory_regions.push(userspace_mem);
 
         let memory_region = kvm_userspace_memory_region{
-            slot: 0,
+            slot: self.memory_regions.len() as u32 - 1,
             flags: 0,
             guest_phys_addr: mem_offset,
             memory_size: mem_size as u64,
@@ -132,22 +138,44 @@ impl VirtualMachine{
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
-        match self.vcpu.run() {
+        let mut irqs = self.irq_handler.borrow_mut().handle_irqs();
+        for _ in 0..irqs.len(){
+            let irq = irqs.pop_front();
+            if irq.is_some(){
+                let irq = irq.unwrap();
+                let res = self.vm.set_irq_line(irq.irq_line, irq.value);
+                if res.is_err() {
+                    eprintln!("IRQ failed!");
+                }
+            }
+            println!("irq");
+        }
+
+        println!("run");
+        let ret = self.vcpu.run();
+        println!("run complete");
+        match ret {
             VcpuExit::Hlt => {
                 println!("KVM_EXIT_HLT");
                 return Err(CrashReason::Hlt);
             }
             VcpuExit::IoOut(port, data) => {
+                if port == 0xFFFF {
+                    println!("KVM_EXIT_HLT");
+                    return Err(CrashReason::Hlt);
+                }
                 self.io_map.output(port, data);
             }
             VcpuExit::IoIn(port, data) => {
                 let ret = self.io_map.input(port, data.len());
                 if ret.is_none() {
+                    println!("NO_IO_DATA_RETURNED");
                     return Err(CrashReason::NoIODataReturned);
                 }
                 let ret = ret.unwrap();
 
                 if ret.len() != data.len() {
+                    println!("INCORRECT_IO_INPUT_LENGTH");
                     return Err(CrashReason::IncorrectIOInputLength);
                 }
                 data.copy_from_slice(&ret);
@@ -158,11 +186,13 @@ impl VirtualMachine{
             VcpuExit::MmioRead(addr, data) => {
                 let ret = self.mmio_map.read(addr, data.len());
                 if ret.is_none() {
+                    println!("NO_MMIO_DATA_RETURNED");
                     return Err(CrashReason::NoMMIODataReturned);
                 }
                 let ret = ret.unwrap();
 
                 if ret.len() != data.len() {
+                    println!("INCORRECT_MMIO_INPUT_LENGTH");
                     return Err(CrashReason::IncorrectMMIOReadLength);
                 }
                 data.copy_from_slice(&ret);

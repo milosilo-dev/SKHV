@@ -1,8 +1,11 @@
-use std::ops::RangeInclusive;
+use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+
+use crate::irq_handler::IRQHandler;
 
 pub trait IODevice {
     fn input(&mut self, port: u16, length: usize) -> Vec<u8>;
     fn output(&mut self, port: u16, data: &[u8]);
+    fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>);
 }
 
 pub struct IODeviceRegion {
@@ -35,6 +38,10 @@ impl IODeviceRegion {
         }
         self.io_device.output(port - *self.port_range.start(), data);
         Some(())
+    }
+
+    pub fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>) {
+        self.io_device.irq_handler(irq_handler);
     }
 }
 

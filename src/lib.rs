@@ -3,3 +3,4 @@ pub mod devices;
 pub mod vm;
 pub mod vcpu;
 pub mod machine_config;
+pub mod irq_handler;

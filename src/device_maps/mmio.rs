@@ -1,8 +1,11 @@
-use std::ops::RangeInclusive;
+use std::{cell::RefCell, ops::RangeInclusive, rc::Rc};
+
+use crate::irq_handler::IRQHandler;
 
 pub trait MMIODevice {
     fn read(&mut self, addr: u64, length: usize) -> Vec<u8>;
     fn write(&mut self, addr: u64, data: &[u8]);
+    fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>);
 }
 
 pub struct MMIODeviceRegion {
@@ -28,6 +31,10 @@ impl MMIODeviceRegion {
 
     pub fn write(&mut self, addr: u64, data: &[u8]) {
         self.mmio_device.write(addr - *self.addr_range.start(), data);
+    }
+
+    pub fn irq_handler(&mut self, irq_handler: Rc<RefCell<IRQHandler>>) {
+        self.mmio_device.irq_handler(irq_handler);
     }
 }
 

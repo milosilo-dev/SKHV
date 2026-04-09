@@ -15,7 +15,7 @@ fn main() {
                 IODeviceRegion::new(0x2f8..=0x2ff, com2),
             ], 
             mmio_devices: vec![],
-            code_entry: 0x0000,
+            code_entry: 0x1000,
         }
     );
 
