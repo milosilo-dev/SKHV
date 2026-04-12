@@ -4,11 +4,11 @@ use kvm_bindings::kvm_regs;
 use kvm_ioctls::{VcpuFd, VmFd};
 
 pub struct VCPU {
-    pub fd: VcpuFd
+    pub fd: VcpuFd,
 }
 
-impl VCPU{
-    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize) -> Self{
+impl VCPU {
+    pub fn new(vm: Arc<Mutex<VmFd>>, entry: usize) -> Self {
         let vm_lock = vm.lock().unwrap();
         let vcpu = vm_lock.create_vcpu(0).unwrap();
 
@@ -45,8 +45,6 @@ impl VCPU{
 
         vcpu.set_regs(&regs).unwrap();
 
-        Self {
-            fd: vcpu
-        }
+        Self { fd: vcpu }
     }
 }

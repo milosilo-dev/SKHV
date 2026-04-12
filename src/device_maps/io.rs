@@ -1,4 +1,7 @@
-use std::{ops::RangeInclusive, sync::{Arc, Mutex}};
+use std::{
+    ops::RangeInclusive,
+    sync::{Arc, Mutex},
+};
 
 use crate::irq_handler::IRQHandler;
 
@@ -11,14 +14,14 @@ pub trait IODevice: Send {
 
 pub struct IODeviceRegion {
     io_device: Box<dyn IODevice>,
-    port_range: RangeInclusive<u16>
+    port_range: RangeInclusive<u16>,
 }
 
 impl IODeviceRegion {
     pub fn new(range: RangeInclusive<u16>, device: Box<dyn IODevice>) -> Self {
         Self {
             io_device: device,
-            port_range: range
+            port_range: range,
         }
     }
 
@@ -30,7 +33,10 @@ impl IODeviceRegion {
         if !self.port_range.contains(&port) {
             return None;
         }
-        Some(self.io_device.input(port - *self.port_range.start(), length))
+        Some(
+            self.io_device
+                .input(port - *self.port_range.start(), length),
+        )
     }
 
     pub fn output(&mut self, port: u16, data: &[u8]) -> Option<()> {
@@ -56,9 +62,7 @@ pub struct IODeviceMap {
 
 impl IODeviceMap {
     pub fn new() -> Self {
-        Self {
-            devices: vec!{}
-        }
+        Self { devices: vec![] }
     }
 
     pub fn register(&mut self, region: IODeviceRegion) {
@@ -67,7 +71,7 @@ impl IODeviceMap {
 
     pub fn input(&mut self, port: u16, length: usize) -> Option<Vec<u8>> {
         for device in &mut self.devices {
-            if device.contains(port){
+            if device.contains(port) {
                 return device.input(port, length);
             }
         }
@@ -76,7 +80,7 @@ impl IODeviceMap {
 
     pub fn output(&mut self, port: u16, data: &[u8]) -> Option<()> {
         for device in &mut self.devices {
-            if device.contains(port){
+            if device.contains(port) {
                 device.output(port, data);
                 return Some(());
             }

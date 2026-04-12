@@ -6,27 +6,29 @@ pub struct IRQCommand {
 }
 
 impl IRQCommand {
-    pub fn new(irq_line: u32, value: bool) -> Self{
-        Self{
-            irq_line,
-            value
+    pub fn new(irq_line: u32, value: bool) -> Self {
+        Self { irq_line, value }
+    }
+}
+
+impl Clone for IRQCommand {
+    fn clone(&self) -> Self {
+        Self {
+            irq_line: self.irq_line,
+            value: self.value,
         }
     }
 }
 
-impl Clone for IRQCommand{
-    fn clone(&self) -> Self {
-        Self { irq_line: self.irq_line, value: self.value }
-    }
-}
-
 pub struct IRQHandler {
-    commands: VecDeque<IRQCommand>
+    commands: VecDeque<IRQCommand>,
 }
 
 impl IRQHandler {
     pub fn new() -> Self {
-        Self { commands: VecDeque::new() }
+        Self {
+            commands: VecDeque::new(),
+        }
     }
 
     pub fn trigger_irq(&mut self, irq: IRQCommand) {

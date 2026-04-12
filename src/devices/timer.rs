@@ -1,8 +1,14 @@
-use std::{sync::{Arc, Mutex}, time::Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
-use crate::{device_maps::mmio::MMIODevice, irq_handler::{IRQCommand, IRQHandler}};
+use crate::{
+    device_maps::mmio::MMIODevice,
+    irq_handler::{IRQCommand, IRQHandler},
+};
 
-pub struct Timer{
+pub struct Timer {
     irq_handler: Option<Arc<Mutex<IRQHandler>>>,
     interval: u32,
     enabled: bool,
@@ -10,9 +16,9 @@ pub struct Timer{
     last_tick: Instant,
 }
 
-impl Timer{
-    pub fn new() -> Self{
-        Self{
+impl Timer {
+    pub fn new() -> Self {
+        Self {
             irq_handler: None,
             interval: 1000,
             enabled: true,
@@ -32,7 +38,7 @@ impl MMIODevice for Timer {
         let value = u32::from_le_bytes(data.try_into().unwrap());
         println!("Wrote to timer: {}", value);
 
-        match addr{
+        match addr {
             0x0 => self.interval = value,
             0x4 => self.enabled = value != 0,
             0x8 => self.irq_line = value,

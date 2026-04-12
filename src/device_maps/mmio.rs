@@ -1,4 +1,7 @@
-use std::{ops::RangeInclusive, sync::{Arc, Mutex}};
+use std::{
+    ops::RangeInclusive,
+    sync::{Arc, Mutex},
+};
 
 use crate::irq_handler::IRQHandler;
 
@@ -11,14 +14,14 @@ pub trait MMIODevice: Send {
 
 pub struct MMIODeviceRegion {
     mmio_device: Box<dyn MMIODevice>,
-    addr_range: RangeInclusive<u64>
+    addr_range: RangeInclusive<u64>,
 }
 
 impl MMIODeviceRegion {
     pub fn new(range: RangeInclusive<u64>, device: Box<dyn MMIODevice>) -> Self {
         Self {
             mmio_device: device,
-            addr_range: range
+            addr_range: range,
         }
     }
 
@@ -27,11 +30,13 @@ impl MMIODeviceRegion {
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
-        self.mmio_device.read(addr - *self.addr_range.start(), length)
+        self.mmio_device
+            .read(addr - *self.addr_range.start(), length)
     }
 
     pub fn write(&mut self, addr: u64, data: &[u8]) {
-        self.mmio_device.write(addr - *self.addr_range.start(), data);
+        self.mmio_device
+            .write(addr - *self.addr_range.start(), data);
     }
 
     pub fn irq_handler(&mut self, irq_handler: Arc<Mutex<IRQHandler>>) {
@@ -49,9 +54,7 @@ pub struct MMIODeviceMap {
 
 impl MMIODeviceMap {
     pub fn new() -> Self {
-        Self {
-            devices: vec!{}
-        }
+        Self { devices: vec![] }
     }
 
     pub fn register(&mut self, region: MMIODeviceRegion) {
@@ -60,7 +63,7 @@ impl MMIODeviceMap {
 
     pub fn read(&mut self, addr: u64, length: usize) -> Option<Vec<u8>> {
         for device in &mut self.devices {
-            if device.contains(addr){
+            if device.contains(addr) {
                 return Some(device.read(addr, length));
             }
         }
@@ -69,7 +72,7 @@ impl MMIODeviceMap {
 
     pub fn write(&mut self, addr: u64, data: &[u8]) -> Option<()> {
         for device in &mut self.devices {
-            if device.contains(addr){
+            if device.contains(addr) {
                 device.write(addr, data);
                 return Some(());
             }

@@ -1,24 +1,26 @@
 use kvm_bindings::{
-    KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region
+    KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region,
 };
 
-use kvm_ioctls::{
-    Kvm, 
-    VcpuExit, VmFd,
-};
+use kvm_ioctls::{Kvm, VcpuExit, VmFd};
 use vmm_sys_util::fam::FamStructWrapper;
 
-use crate::{device_maps::{
-    io::{
-        IODeviceMap, 
-        IODeviceRegion
-    }, 
-    mmio::{
-        MMIODeviceMap, MMIODeviceRegion
-    }
-}, irq_handler::IRQHandler, machine_config::MachineConfig, vcpu::VCPU};
-use std::{ptr, sync::{Arc, Mutex}, thread::{self, sleep}, time::Duration};
+use crate::{
+    device_maps::{
+        io::{IODeviceMap, IODeviceRegion},
+        mmio::{MMIODeviceMap, MMIODeviceRegion},
+    },
+    irq_handler::IRQHandler,
+    machine_config::MachineConfig,
+    vcpu::VCPU,
+};
 use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
+use std::{
+    ptr,
+    sync::{Arc, Mutex},
+    thread::{self, sleep},
+    time::Duration,
+};
 
 pub enum CrashReason {
     Hlt,
@@ -30,7 +32,7 @@ pub enum CrashReason {
     IncorrectMMIOReadLength,
 }
 
-pub struct VirtualMachine{
+pub struct VirtualMachine {
     vcpu: VCPU,
     vm: Arc<Mutex<VmFd>>,
     io_map: Arc<Mutex<IODeviceMap>>,
@@ -38,23 +40,19 @@ pub struct VirtualMachine{
     memory_regions: Vec<*mut u8>,
 }
 
-impl VirtualMachine{
-    pub fn new(init_mem_image: Vec<u8>, machine_config: MachineConfig) -> Self{
+impl VirtualMachine {
+    pub fn new(machine_config: MachineConfig) -> Self {
         let kvm: Kvm = Kvm::new().unwrap();
         let vm = Arc::new(Mutex::new(kvm.create_vm().unwrap()));
         let _ = vm.lock().unwrap().create_irq_chip().unwrap();
 
-        let mut routing: FamStructWrapper<kvm_irq_routing> =
-            FamStructWrapper::new(1).unwrap();
+        let mut routing: FamStructWrapper<kvm_irq_routing> = FamStructWrapper::new(1).unwrap();
 
         routing.as_mut_slice()[0] = kvm_irq_routing_entry {
             gsi: 1,
             type_: KVM_IRQ_ROUTING_IRQCHIP,
             u: kvm_bindings::kvm_irq_routing_entry__bindgen_ty_1 {
-                irqchip: kvm_bindings::kvm_irq_routing_irqchip {
-                    irqchip: 0,
-                    pin: 1,
-                },
+                irqchip: kvm_bindings::kvm_irq_routing_irqchip { irqchip: 0, pin: 1 },
             },
             ..Default::default()
         };
@@ -76,27 +74,34 @@ impl VirtualMachine{
 
         for mem in machine_config.memory_regions {
             this.new_mem(mem.mem_size, mem.mem_offset);
-            if mem.mem_offset <= machine_config.code_entry as u64
-                && mem.mem_offset + mem.mem_size as u64 > machine_config.code_entry as u64
-            {
-                let code_offset = machine_config.code_entry as usize - mem.mem_offset as usize;
-                let remaining = mem.mem_size.checked_sub(code_offset)
-                    .expect("code_entry offset exceeds memory region size");
+            for binary in &machine_config.binaries {
+                if mem.mem_offset <= binary.offset as u64
+                    && mem.mem_offset + mem.mem_size as u64 > binary.offset as u64
+                {
+                    let code_offset = binary.offset as usize - mem.mem_offset as usize;
+                    let remaining = mem
+                        .mem_size
+                        .checked_sub(code_offset)
+                        .expect("code_entry offset exceeds memory region size");
 
-                assert!(
-                    init_mem_image.len() <= remaining,
-                    "init_mem_image ({} bytes) overflows memory region: only {} bytes available from code entry (offset {:#x}) to end of region",
-                    init_mem_image.len(),
-                    remaining,
-                    code_offset,
-                );
-
-                unsafe {
-                    ptr::copy_nonoverlapping(
-                        init_mem_image.as_ptr(),
-                        this.memory_regions.last().expect("Can't find memory region").add(code_offset),
-                        init_mem_image.len()
+                    assert!(
+                        binary.data.len() <= remaining,
+                        "init_mem_image ({} bytes) overflows memory region: only {} bytes available from code entry (offset {:#x}) to end of region",
+                        binary.data.len(),
+                        remaining,
+                        code_offset,
                     );
+
+                    unsafe {
+                        ptr::copy_nonoverlapping(
+                            binary.data.as_ptr(),
+                            this.memory_regions
+                                .last()
+                                .expect("Can't find memory region")
+                                .add(code_offset),
+                            binary.data.len(),
+                        );
+                    }
                 }
             }
         }
@@ -133,7 +138,7 @@ impl VirtualMachine{
                 while let Some(irq) = irqs.pop_front() {
                     let vm_lock = vm_tick.lock().unwrap();
                     match vm_lock.set_irq_line(irq.irq_line, irq.value) {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => println!("IRQ failed: {:?}", e),
                     }
 
@@ -166,12 +171,12 @@ impl VirtualMachine{
         let userspace_mem = raw_ptr as *mut u8;
         self.memory_regions.push(userspace_mem);
 
-        let memory_region = kvm_userspace_memory_region{
+        let memory_region = kvm_userspace_memory_region {
             slot: self.memory_regions.len() as u32 - 1,
             flags: 0,
             guest_phys_addr: mem_offset,
             memory_size: mem_size as u64,
-            userspace_addr: userspace_mem as u64
+            userspace_addr: userspace_mem as u64,
         };
 
         let vm_lock = self.vm.lock().unwrap();
@@ -248,10 +253,7 @@ impl VirtualMachine{
                 data.copy_from_slice(&io_ret);
             }
             VcpuExit::FailEntry(reason, ..) => {
-                eprintln!(
-                    "KVM_EXIT_FAIL_ENTRY: reason = {:#x}",
-                    reason
-                );
+                eprintln!("KVM_EXIT_FAIL_ENTRY: reason = {:#x}", reason);
                 return Err(CrashReason::FailedEntry);
             }
             exit_reason => {
