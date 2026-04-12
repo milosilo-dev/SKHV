@@ -137,6 +137,7 @@ impl VirtualMachine{
                         Ok(_) => println!("IRQ sent"),
                         Err(e) => println!("IRQ failed: {:?}", e),
                     }
+
                     //evt.write(1).unwrap();
                 }
 

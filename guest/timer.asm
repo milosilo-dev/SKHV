@@ -2,15 +2,40 @@ org 0x1000
 
 cli
 
-; Load IDT (minimal — required for IOAPIC mode)
 xor ax, ax
 mov ds, ax
 
-; Point IDT entry 33 (IRQ1 = 32 + 1) to handler
-mov word [33 * 8], timer_handler
-mov word [33 * 8 + 2], 0x0000
-mov word [33 * 8 + 4], 0x8E00
-mov word [33 * 8 + 6], 0x0000
+; set IVT entry for IRQ1 (interrupt 0x09)
+mov word [0x09 * 4], timer_handler
+mov word [0x09 * 4 + 2], 0x0000
+
+; ICW1
+mov al, 0x11
+out 0x20, al
+out 0xA0, al
+
+; ICW2 (vector offsets)
+mov al, 0x08      ; master PIC → 0x08–0x0F
+out 0x21, al
+mov al, 0x70      ; slave PIC → 0x70–0x77
+out 0xA1, al
+
+; ICW3
+mov al, 0x04
+out 0x21, al
+mov al, 0x02
+out 0xA1, al
+
+; ICW4
+mov al, 0x01
+out 0x21, al
+out 0xA1, al
+
+; unmask IRQ1
+mov al, 0xFD
+out 0x21, al
+mov al, 0xFF
+out 0xA1, al
 
 sti
 
@@ -24,6 +49,6 @@ timer_handler:
     out dx, al
 
     mov al, 0x20
-    out 0x20, al      ; EOI PIC compatibility (safe in KVM)
+    out 0x20, al
 
     iret
