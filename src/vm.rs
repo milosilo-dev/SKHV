@@ -132,9 +132,8 @@ impl VirtualMachine{
                 };
                 while let Some(irq) = irqs.pop_front() {
                     let vm_lock = vm_tick.lock().unwrap();
-                    println!("TRIGGER IRQ {}, {}", irq.irq_line, irq.value);
                     match vm_lock.set_irq_line(irq.irq_line, irq.value) {
-                        Ok(_) => println!("IRQ sent"),
+                        Ok(_) => {},
                         Err(e) => println!("IRQ failed: {:?}", e),
                     }
 
@@ -200,14 +199,7 @@ impl VirtualMachine{
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
-        let sregs = self.vcpu.fd.get_sregs().unwrap();
-        let regs = self.vcpu.fd.get_regs().unwrap();
-        println!("RIP={:#x} RFLAGS={:#x} CS={:#x} DS={:#x}", 
-            regs.rip, regs.rflags, sregs.cs.base, sregs.ds.base);
-        println!("CR0={:#x}", sregs.cr0);
-
         let exit = self.vcpu.fd.run().expect("run failed");
-        println!("First exit: {:?}", exit);
         match exit {
             VcpuExit::Hlt => {
                 println!("KVM_EXIT_HLT");
