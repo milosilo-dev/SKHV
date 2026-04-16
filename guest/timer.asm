@@ -5,9 +5,9 @@ cli
 xor ax, ax
 mov ds, ax
 
-; set IVT entry for IRQ1 (interrupt 0x09)
-mov word [0x09 * 4], timer_handler
-mov word [0x09 * 4 + 2], 0x0000
+; set IVT entry for IRQ0 (interrupt 0x08)
+mov word [0x08 * 4], timer_handler
+mov word [0x08 * 4 + 2], 0x0000
 
 ; ICW1
 mov al, 0x11
@@ -31,8 +31,8 @@ mov al, 0x01
 out 0x21, al
 out 0xA1, al
 
-; unmask IRQ1
-mov al, 0xFD
+; unmask IRQ0
+mov al, 0xFE
 out 0x21, al
 mov al, 0xFD
 out 0xA1, al

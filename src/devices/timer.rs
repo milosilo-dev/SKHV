@@ -22,7 +22,7 @@ impl Timer {
             irq_handler: None,
             interval: 1000,
             enabled: true,
-            irq_line: 1,
+            irq_line: 0,
             last_tick: Instant::now(),
         }
     }
