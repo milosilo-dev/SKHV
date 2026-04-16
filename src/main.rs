@@ -10,6 +10,10 @@ use skhv::{
 fn main() {
     let com1 = Box::new(Serial::new());
     let com2 = Box::new(Serial::new());
+
+    let dbgcom1 = Box::new(Serial::new());
+    let dbgcom2 = Box::new(Serial::new());
+
     let timer = Box::new(Timer::new());
 
     let init_mem_image = fs::read("guest/linuxBzImage").unwrap();
@@ -22,6 +26,8 @@ fn main() {
         io_devices: vec![
             IODeviceRegion::new(0x3f8..=0x3ff, com1),
             IODeviceRegion::new(0x2f8..=0x2ff, com2),
+            IODeviceRegion::new(0x80..=0x80, dbgcom1),
+            IODeviceRegion::new(0xE9..=0xE9, dbgcom2),
         ],
         mmio_devices: vec![MMIODeviceRegion::new(0xF0001000..=0xF0001008, timer)],
         code_entry: 0x10000,
