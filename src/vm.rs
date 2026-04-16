@@ -204,8 +204,16 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
+        let regs = self.vcpu.fd.get_regs().unwrap();
+
+        println!(
+            "RIP={:#x} RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}",
+            regs.rip, regs.rax, regs.rbx, regs.rcx, regs.rdx
+        );
+
         let exit = self.vcpu.fd.run().expect("run failed");
         println!("VM Exit: {:?}", exit);
+
         match exit {
             VcpuExit::Hlt => {
                 println!("KVM_EXIT_HLT");
