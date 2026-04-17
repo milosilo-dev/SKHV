@@ -46,8 +46,25 @@ impl VirtualMachine {
         let vm = Arc::new(Mutex::new(kvm.create_vm().unwrap()));
         let _ = vm.lock().unwrap().create_irq_chip().unwrap();
 
-        let mut routing: FamStructWrapper<kvm_irq_routing> = FamStructWrapper::new(2).unwrap();
+        let mut routing: FamStructWrapper<kvm_irq_routing> = FamStructWrapper::new(machine_config.irq_map.len()).unwrap();
 
+        let mut idx = 0;
+        for irq_map in machine_config.irq_map{
+            routing.as_mut_slice()[idx] = kvm_irq_routing_entry {
+                gsi: irq_map.read_gsi(),
+                type_: KVM_IRQ_ROUTING_IRQCHIP,
+                u: kvm_bindings::kvm_irq_routing_entry__bindgen_ty_1 {
+                    irqchip: kvm_bindings::kvm_irq_routing_irqchip {
+                        irqchip: irq_map.read_irq_chip(),
+                        pin: irq_map.read_irq_pin(),
+                    },
+                },
+                ..Default::default()
+            };
+            idx+=1;
+        }
+
+        /*
         routing.as_mut_slice()[0] = kvm_irq_routing_entry {
             gsi: 0,
             type_: KVM_IRQ_ROUTING_IRQCHIP,
@@ -71,6 +88,7 @@ impl VirtualMachine {
             },
             ..Default::default()
         };
+        */
 
         vm.lock().unwrap().set_gsi_routing(&routing).unwrap();
 
@@ -136,12 +154,6 @@ impl VirtualMachine {
         let irq_handler_tick = Arc::clone(&irq_handler);
         let vm_tick = Arc::clone(&vm);
         thread::spawn(move || {
-            //let evt = EventFd::new(0).unwrap();
-            {
-                //let vm_lock = vm_tick.lock().unwrap();
-                //vm_lock.register_irqfd(&evt, 0).unwrap();
-            }
-
             loop {
                 mmio_map_tick.lock().unwrap().tick();
                 io_map_tick.lock().unwrap().tick();
@@ -152,13 +164,10 @@ impl VirtualMachine {
                 };
                 while let Some(irq) = irqs.pop_front() {
                     let vm_lock = vm_tick.lock().unwrap();
-                    println!("Line: {}, Active: {}", irq.irq_line, irq.value);
                     match vm_lock.set_irq_line(irq.irq_line, irq.value) {
                         Ok(_) => {}
                         Err(e) => println!("IRQ failed: {:?}", e),
                     }
-
-                    //evt.write(1).unwrap();
                 }
 
                 sleep(Duration::from_millis(1));
@@ -220,16 +229,7 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), CrashReason> {
-        let regs = self.vcpu.fd.get_regs().unwrap();
-
-        println!(
-            "RIP={:#x} RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}",
-            regs.rip, regs.rax, regs.rbx, regs.rcx, regs.rdx
-        );
-
         let exit = self.vcpu.fd.run().expect("run failed");
-        println!("VM Exit: {:?}", exit);
-
         match exit {
             VcpuExit::Hlt => {
                 println!("KVM_EXIT_HLT");
