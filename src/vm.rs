@@ -29,6 +29,7 @@ pub enum CrashReason {
     IncorrectIOInputLength,
     NoMMIODataReturned,
     IncorrectMMIOReadLength,
+    Shutdown,
 }
 
 pub struct VirtualMachine {
@@ -252,6 +253,16 @@ impl VirtualMachine {
             VcpuExit::FailEntry(reason, ..) => {
                 eprintln!("KVM_EXIT_FAIL_ENTRY: reason = {:#x}", reason);
                 return Err(CrashReason::FailedEntry);
+            }
+            VcpuExit::Shutdown => {
+                eprintln!("KVM_SHUTDOWN");
+                let regs = self.vcpu.fd.get_regs().unwrap();
+                let sregs = self.vcpu.fd.get_sregs().unwrap();
+                eprintln!("SHUTDOWN at RIP={:#x}", regs.rip);
+                eprintln!("RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}", regs.rax, regs.rbx, regs.rcx, regs.rdx);
+                eprintln!("CR0={:#x} CR3={:#x} CR4={:#x} EFER={:#x}", sregs.cr0, sregs.cr3, sregs.cr4, sregs.efer);
+                eprintln!("CS base={:#x} selector={:#x} type={:#x} l={}", sregs.cs.base, sregs.cs.selector, sregs.cs.type_, sregs.cs.l);
+                return Err(CrashReason::Shutdown);
             }
             exit_reason => {
                 println!("Unhandled exit: {:?}", exit_reason);

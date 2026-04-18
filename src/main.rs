@@ -15,7 +15,7 @@ fn main() {
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
 
-    let init_mem_image = fs::read("guest/date.bin").unwrap();
+    let init_mem_image = fs::read("guest/long_mode.bin").unwrap();
     let mut vm = VirtualMachine::new(MachineConfig {
         memory_regions: vec![MemoryRegion {
             mem_size: 64 * 1024 * 1024,

@@ -45,6 +45,11 @@ out 0x40, al
 mov al, 0x04        ; high byte
 out 0x40, al
 
+mov al, 0x0B
+out 0x70, al
+mov al, 0b00000110
+out 0x71, al
+
 sti
 
 main:
