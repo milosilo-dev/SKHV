@@ -17,7 +17,7 @@ fn main() {
 
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
 
-    let init_mem_image = fs::read("guest/clock.bin").unwrap();
+    let init_mem_image = fs::read("guest/firmware/entry.bin").unwrap();
     let mut vm = VirtualMachine::new(MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
             mem_size: 64 * 1024 * 1024,

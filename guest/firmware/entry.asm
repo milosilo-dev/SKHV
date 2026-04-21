@@ -45,7 +45,6 @@ protected_mode:
 ; -----------------------------
 ; GDT (MUST be 32-bit here)
 ; -----------------------------
-[bits 16]
 gdt:
     dq 0x0000000000000000        ; null
     dq 0x00CF9A000000FFFF        ; 32-bit code segment
