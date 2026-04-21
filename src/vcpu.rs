@@ -54,18 +54,17 @@ impl VCPU {
         sregs.cr4 = 0;
         sregs.efer = 0;
 
-        sregs.cs = real_mode_code_seg(0, 0);
-        sregs.ds = real_mode_data_seg(0, 0);
-        sregs.es = real_mode_data_seg(0, 0);
-        sregs.fs = real_mode_data_seg(0, 0);
-        sregs.gs = real_mode_data_seg(0, 0);
-        sregs.ss = real_mode_data_seg(0, 0);
-
+        sregs.cs = real_mode_code_seg(0x10000, 0x1000);
+        sregs.ds = real_mode_data_seg(0x10000, 0x1000);
+        sregs.es = real_mode_data_seg(0x10000, 0x1000);
+        sregs.fs = real_mode_data_seg(0x10000, 0x1000);
+        sregs.gs = real_mode_data_seg(0x10000, 0x1000);
+        sregs.ss = real_mode_data_seg(0x10000, 0x1000);
         vcpu.set_sregs(&sregs).unwrap();
 
         let mut regs = kvm_regs::default();
-        regs.rip = entry as u64;
-        regs.rsp = 0x0FF0;
+        regs.rip = entry as u64; //0x0200;
+        regs.rsp = 0x7FF0;
         regs.rsi = 0x20000;
         regs.rflags = 0x202;
 

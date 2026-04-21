@@ -19,23 +19,50 @@ impl Binary {
     }
 
     fn build_boot_params(bzimage: &[u8]) -> Vec<u8> {
-        let mut bp = vec![0u8; 4096]; // 4KB zeroed
+        // struct boot_params / "zero page" — see Documentation/x86/boot.rst
+        let mut bp = vec![0u8; 4096]; // 4 KB, fully zeroed
 
-        // Copy setup_header (starts at 0x1F1 in bzImage)
-        let setup_header_start = 0x1F1;
-        let setup_header_size = 0x100; // enough to cover needed fields
+        // ── Copy the setup_header verbatim from the bzImage ────────────────
+        // The header starts at offset 0x1F1 and extends through 0x26F
+        // (kernel_info_offset at 0x268, protocol 2.15).  0x7F bytes covers
+        // everything safely without overrunning into reserved territory.
+        let hdr_src = 0x1F1usize;
+        let hdr_len = 0x7F;
+        bp[hdr_src..hdr_src + hdr_len]
+            .copy_from_slice(&bzimage[hdr_src..hdr_src + hdr_len]);
 
-        bp[0x1F1..0x1F1 + setup_header_size]
-            .copy_from_slice(&bzimage[setup_header_start..setup_header_start + setup_header_size]);
+        // ── Fields the boot loader MUST write (boot protocol §1.3) ─────────
 
-        // Set command line pointer
+        // type_of_loader (0x210): 0xFF = unknown/custom boot loader.
+        // If left at 0x00 the kernel may reject the boot on newer versions.
+        bp[0x210] = 0xFF;
+
+        // loadflags (0x211):
+        //   bit 0 (LOADED_HIGH)  – protected-mode kernel is at 0x100000 ✓
+        //   bit 7 (CAN_USE_HEAP) – we supply a valid heap_end_ptr below
+        let loadflags = bp[0x211];
+        bp[0x211] = loadflags | 0x01 | 0x80;
+
+        // heap_end_ptr (0x224): highest usable address *within* the real-mode
+        // segment (relative to the start of the segment, i.e. offset from X).
+        // Setup is at X=0x10000; 0x7FF0 gives the kernel ~28 KB of heap
+        // between the end of setup code and the stack guard.
+        let heap_end: u16 = 0x7FF0;
+        bp[0x224..0x226].copy_from_slice(&heap_end.to_le_bytes());
+
+        // vid_mode (0x1FA): 0xFFFF = "normal" / don't change the video mode.
+        // The boot loader is required to set this field explicitly.
+        let vid: u16 = 0xFFFF;
+        bp[0x1FA..0x1FC].copy_from_slice(&vid.to_le_bytes());
+
+        // cmd_line_ptr (0x228): 32-bit linear address of the command line.
         let cmdline_addr: u32 = 0x21000;
-
         bp[0x228..0x22C].copy_from_slice(&cmdline_addr.to_le_bytes());
 
-        // cmdline size
-        let cmdline = b"console=ttyS0 earlyprintk=serial\0";
-        let size = cmdline.len() as u32;
+        // cmdline_size (0x238): actual byte-length of our command line string,
+        // NOT the kernel's reported maximum.  Exclude the NUL terminator.
+        const CMDLINE: &[u8] = b"console=ttyS0 earlyprintk=serial\0";
+        let size = (CMDLINE.len() - 1) as u32;
         bp[0x238..0x23C].copy_from_slice(&size.to_le_bytes());
 
         bp

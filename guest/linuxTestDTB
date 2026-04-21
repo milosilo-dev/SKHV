@@ -1,0 +1,16 @@
+/dts-v1/;
+
+/ {
+    compatible = "linux,dummy-virt";
+
+    memory@0 {
+        device_type = "memory";
+        reg = <0x0 0x4000000>; // 64MB
+    };
+
+    virtio_rng@10001000 {
+        compatible = "virtio,mmio";
+        reg = <0x0 0x10001000 0x0 0x1000>;
+        interrupts = <5>;
+    };
+};
