@@ -1,57 +1,58 @@
-org 0x1000
+bits 16
 
-; -----------------------------
-; Fix GDT pointer at runtime
-; -----------------------------
-start:
-    call get_base
-get_base:
-    pop ebx
-    sub ebx, get_base        ; EBX = actual load base
+global _start
+_start:
+    cli
 
-    ; patch GDT base into gdt_ptr
-    lea eax, [ebx + gdt]
-    mov [ebx + gdt_ptr + 2], eax
+    ; Set up segments
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
 
-    lgdt [ebx + gdt_ptr]
+    ; Enable A20 via port 0x92 (fast method)
+    in  al, 0x92
+    or  al, 0x02
+    and al, 0xFE        ; don't reset the machine (bit 0)
+    out 0x92, al
 
-    ; -----------------------------
-    ; Enter protected mode
-    ; -----------------------------
+    ; Load GDT and enter protected mode
+    lgdt [gdt_ptr]
+
     mov eax, cr0
-    or eax, 0x1
+    or  eax, 1
     mov cr0, eax
 
-    jmp 0x08:protected_mode   ; far jump using 32-bit code segment
+    ; Far jump to flush the pipeline and enter 32-bit CS
+    jmp 0x08:protected_entry
 
-; -----------------------------
-; 32-bit protected mode
-; -----------------------------
-[bits 32]
-protected_mode:
+BITS 32
+protected_entry:
+    ; Reload data segment registers
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov ss, ax
+    mov fs, ax
+    mov gs, ax
 
-    ; test output (serial)
-    mov dx, 0x3F8
-    mov al, 'P'
-    out dx, al
+    ; Set up a proper 32-bit stack
+    mov esp, 0x7C00
 
-.hang:
-    jmp .hang
+    ; Call into C - never returns
+    extern c_main
+    call c_main
+    hlt
 
-; -----------------------------
-; GDT (MUST be 32-bit here)
-; -----------------------------
-gdt:
-    dq 0x0000000000000000        ; null
-    dq 0x00CF9A000000FFFF        ; 32-bit code segment
-    dq 0x00CF92000000FFFF        ; data segment
+; ── Minimal flat GDT (null / code / data) ──────────────────────────────────
+align 8
+gdt_start:
+    dq 0x0000000000000000   ; 0x00 null
+    dq 0x00CF9A000000FFFF   ; 0x08 code  ring-0, 32-bit, 4 GB
+    dq 0x00CF92000000FFFF   ; 0x10 data  ring-0, 32-bit, 4 GB
+gdt_end:
 
 gdt_ptr:
-    dw gdt_end - gdt - 1
-    dd 0x0                       ; patched at runtime
-
-gdt_end:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
