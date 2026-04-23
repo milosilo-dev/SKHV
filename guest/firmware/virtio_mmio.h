@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #define VIRTIO_RNG_BASE     0x10001000
+#define VIRTIO_CNT_BASE     0x10002000
 
 // MMIO register offsets (all 32-bit reads/writes)
 #define VIRTIO_MMIO_MAGIC           0x000  // must read 0x74726976 ("virt")

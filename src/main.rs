@@ -2,7 +2,7 @@ use std::fs;
 
 use skhv::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::rng::RngVirtio, transports::mmio::MMIOTransport}},
+    devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
     irq_map::IrqMap,
     machine_config::{Binary, MachineConfig, MemoryRegionConfig},
     vm::VirtualMachine,
@@ -14,12 +14,9 @@ fn main() {
     let timer = Box::new(Pit::new());
     let cmos = Box::new(Cmos::new());
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
+    let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1));
 
-    // The reset vector stub — tiny, lives at 0xFFFFFFF0 (or 0xFFF0 in your 64MB region)
-    // This is ONLY the far-jump: EA 00 7E 00 00  (jmp far 0x0000:0x7E00)
     let reset_vector: Vec<u8> = vec![0xEA, 0x00, 0x7E, 0x00, 0x00];
-
-    // The actual firmware (entry.asm + main.c linked at 0x7E00)
     let firmware = fs::read("guest/firmware/out.bin").unwrap();
 
     let mut vm = VirtualMachine::new(MachineConfig {
@@ -39,6 +36,7 @@ fn main() {
         ],
         mmio_devices: vec![
             MMIODeviceRegion::new(0x10001000..=0x10001FFF, rng),
+            MMIODeviceRegion::new(0x10002000..=0x10002FFF, cnt),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0,  // CPU starts executing here

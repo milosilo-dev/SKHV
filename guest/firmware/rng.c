@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 static Virtqueue rng_queue __attribute__((aligned(4096)));
-static uint16_t  next_desc = 0;
-static uint16_t  avail_idx = 0;
+static uint16_t  rng_next_desc = 0;
+static uint16_t  rng_avail_idx = 0;
 static uint16_t rng_last_used = 0;
 
 void virtio_rng_init(void){
@@ -45,18 +45,18 @@ void virtio_rng_init(void){
 }
 
 uint32_t virtio_rng_read(uint8_t *buf, uint32_t len) {
-    uint16_t d = next_desc % QUEUE_SIZE;
-    next_desc = (next_desc + 1) % QUEUE_SIZE;
+    uint16_t d = rng_next_desc % QUEUE_SIZE;
+    rng_next_desc = (rng_next_desc + 1) % QUEUE_SIZE;
 
     rng_queue.desc[d].addr  = (uint64_t)buf;
     rng_queue.desc[d].len   = len;
     rng_queue.desc[d].flags = VIRTQ_DESC_F_WRITE;
     rng_queue.desc[d].next  = 0;
 
-    rng_queue.avail.ring[avail_idx % QUEUE_SIZE] = d;
-    avail_idx++;
+    rng_queue.avail.ring[rng_avail_idx % QUEUE_SIZE] = d;
+    rng_avail_idx++;
     __asm__ volatile("" ::: "memory");
-    rng_queue.avail.idx = avail_idx;
+    rng_queue.avail.idx = rng_avail_idx;
 
     mmio_write(VIRTIO_RNG_BASE, VIRTIO_MMIO_QUEUE_NOTIFY, 0);
 
