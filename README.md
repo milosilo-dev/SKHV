@@ -1,3 +1,4 @@
+![Header](./images/github-header-banner.png)
 # Ferrum VMM
 
 A hobby x86 hypervisor written in Rust, with a custom guest firmware written in C, designed to boot Linux via the Limine bootloader.
