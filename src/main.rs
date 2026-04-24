@@ -5,7 +5,7 @@ use ferrumvm::{
     devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
     irq::map::IrqMap,
     machine_config::{Binary, MachineConfig, MemoryRegionConfig},
-    vm::VirtualMachine,
+    vm::vm::VirtualMachine,
 };
 
 fn main() {

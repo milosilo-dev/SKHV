@@ -1,39 +1,11 @@
-use kvm_bindings::{
-    KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region,
-};
+use std::sync::{Arc, Mutex};
 
-use kvm_ioctls::{Kvm, VcpuExit, VmFd};
+use kvm_bindings::{KVM_IRQ_ROUTING_IRQCHIP, kvm_irq_routing, kvm_irq_routing_entry, kvm_userspace_memory_region};
+use kvm_ioctls::Kvm;
+use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
 use vmm_sys_util::fam::FamStructWrapper;
 
-use crate::{
-    device_maps::{
-        io::{IODeviceMap, IODeviceRegion},
-        mmio::{MMIODeviceMap, MMIODeviceRegion},
-    }, irq::handler::IRQHandler, machine_config::MachineConfig, memory_region::{GuestMemoryHandle, MemoryRegion}, vcpu::VCPU
-};
-use libc::{MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, mmap};
-use std::{
-    sync::{Arc, Mutex}, thread
-};
-
-pub enum CrashReason {
-    Hlt,
-    FailedEntry,
-    UnhandledExit,
-    NoIODataReturned,
-    IncorrectIOInputLength,
-    NoMMIODataReturned,
-    IncorrectMMIOReadLength,
-    Shutdown,
-}
-
-pub struct VirtualMachine {
-    vcpu: VCPU,
-    vm: Arc<Mutex<VmFd>>,
-    io_map: Arc<Mutex<IODeviceMap>>,
-    mmio_map: Arc<Mutex<MMIODeviceMap>>,
-    memory_regions: GuestMemoryHandle,
-}
+use crate::{device_maps::{io::{IODeviceMap, IODeviceRegion}, mmio::{MMIODeviceMap, MMIODeviceRegion}}, irq::handler::IRQHandler, machine_config::MachineConfig, memory_region::MemoryRegion, vcpu::VCPU, vm::{tick::TickContext, vm::VirtualMachine}};
 
 impl VirtualMachine {
     pub fn new(mut machine_config: MachineConfig) -> Self {
@@ -116,24 +88,13 @@ impl VirtualMachine {
         let mmio_map_tick = Arc::clone(&mmio_map);
         let irq_handler_tick = Arc::clone(&irq_handler);
         let vm_tick = Arc::clone(&vm);
-        thread::spawn(move || {
-            loop {
-                mmio_map_tick.lock().unwrap().tick();
-                io_map_tick.lock().unwrap().tick();
 
-                let mut irqs = {
-                    let mut handler = irq_handler_tick.lock().unwrap();
-                    handler.handle_irqs()
-                };
-                while let Some(irq) = irqs.pop_front() {
-                    let vm_lock = vm_tick.lock().unwrap();
-                    match vm_lock.set_irq_line(irq.irq_line, irq.value) {
-                        Ok(_) => {}
-                        Err(e) => println!("IRQ failed: {:?}", e),
-                    }
-                }
-            }
-        });
+        this.tick(TickContext::new(
+            io_map_tick,
+            mmio_map_tick,
+            irq_handler_tick,
+            vm_tick
+        ));
 
         this
     }
@@ -187,76 +148,5 @@ impl VirtualMachine {
         let mut mmio_map = mmio_map.unwrap();
         mmio_map.register(region);
         true
-    }
-
-    pub fn run(&mut self) -> Result<(), CrashReason> {
-        let exit = self.vcpu.fd.run().expect("run failed");
-        match exit {
-            VcpuExit::Hlt => {
-                println!("KVM_EXIT_HLT");
-                return Err(CrashReason::Hlt);
-            }
-            VcpuExit::IoOut(port, data) => {
-                let mut io_map = self.io_map.lock().unwrap();
-                io_map.output(port, data);
-            }
-            VcpuExit::IoIn(port, data) => {
-                let mut io_map = self.io_map.lock().unwrap();
-                let io_ret = io_map.input(port, data.len());
-                if io_ret.is_none() {
-                    for b in data.iter_mut() {
-                        *b = 0xFF;
-                    }
-                    return Ok(());
-                }
-                let io_ret = io_ret.unwrap();
-
-                if io_ret.len() != data.len() {
-                    println!("INCORRECT_IO_INPUT_LENGTH");
-                    return Err(CrashReason::IncorrectIOInputLength);
-                }
-                data.copy_from_slice(&io_ret);
-            }
-            VcpuExit::MmioWrite(addr, data) => {
-                let mut mmio_map = self.mmio_map.lock().unwrap();
-                mmio_map.write(addr, data);
-            }
-            VcpuExit::MmioRead(addr, data) => {
-                let mut mmio_map = self.mmio_map.lock().unwrap();
-                let io_ret = mmio_map.read(addr, data.len());
-                if io_ret.is_none() {
-                    for b in data.iter_mut() {
-                        *b = 0;
-                    }
-                    return Ok(());
-                }
-                let io_ret = io_ret.unwrap();
-
-                if io_ret.len() != data.len() {
-                    println!("INCORRECT_MMIO_INPUT_LENGTH");
-                    return Err(CrashReason::IncorrectMMIOReadLength);
-                }
-                data.copy_from_slice(&io_ret);
-            }
-            VcpuExit::FailEntry(reason, ..) => {
-                eprintln!("KVM_EXIT_FAIL_ENTRY: reason = {:#x}", reason);
-                return Err(CrashReason::FailedEntry);
-            }
-            VcpuExit::Shutdown => {
-                eprintln!("KVM_SHUTDOWN");
-                let regs = self.vcpu.fd.get_regs().unwrap();
-                let sregs = self.vcpu.fd.get_sregs().unwrap();
-                eprintln!("SHUTDOWN at RIP={:#x}", regs.rip);
-                eprintln!("RAX={:#x} RBX={:#x} RCX={:#x} RDX={:#x}", regs.rax, regs.rbx, regs.rcx, regs.rdx);
-                eprintln!("CR0={:#x} CR3={:#x} CR4={:#x} EFER={:#x}", sregs.cr0, sregs.cr3, sregs.cr4, sregs.efer);
-                eprintln!("CS base={:#x} selector={:#x} type={:#x} l={}", sregs.cs.base, sregs.cs.selector, sregs.cs.type_, sregs.cs.l);
-                return Err(CrashReason::Shutdown);
-            }
-            exit_reason => {
-                println!("Unhandled exit: {:?}", exit_reason);
-                // return Err(CrashReason::UnhandledExit);
-            }
-        }
-        Ok(())
     }
 }
