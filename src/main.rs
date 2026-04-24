@@ -2,7 +2,7 @@ use std::fs;
 
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
-    devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
+    devices::{cmos::Cmos, serial::Serial, timer::Pit, virtio::{devices::{blk::BlkVirtio, counter::CntVirtio, rng::RngVirtio}, transports::mmio::MMIOTransport}},
     irq::map::IrqMap,
     machine_config::{Binary, MachineConfig, MemoryRegionConfig},
     vm::vm::VirtualMachine,
@@ -15,6 +15,7 @@ fn main() {
     let cmos = Box::new(Cmos::new());
     let rng = Box::new(MMIOTransport::new(Box::new(RngVirtio::new()), 1));
     let cnt = Box::new(MMIOTransport::new(Box::new(CntVirtio::new()), 1));
+    let blk = Box::new(MMIOTransport::new(Box::new(BlkVirtio::new("guest/disk.bin")), 1));
 
     let reset_vector: Vec<u8> = vec![0xEA, 0x00, 0x7E, 0x00, 0x00];
     let firmware = fs::read("guest/firmware/out.bin").unwrap();
@@ -37,6 +38,7 @@ fn main() {
         mmio_devices: vec![
             MMIODeviceRegion::new(0x10001000..=0x10001FFF, rng),
             MMIODeviceRegion::new(0x10002000..=0x10002FFF, cnt),
+            MMIODeviceRegion::new(0x10003000..=0x10003FFF, blk),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0,  // CPU starts executing here

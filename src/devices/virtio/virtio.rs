@@ -1,4 +1,4 @@
-use crate::memory_region::{GuestMemoryHandle};
+use crate::memory_region::GuestMemoryHandle;
 
 pub trait VirtioDevice {
     fn virtio_type(&self) -> u32;
@@ -67,6 +67,34 @@ impl VirtioGuestMemoryHandle {
 
         println!("Virtio read a addr outside of mapped scope!");
         0
+    }
+
+    pub fn read_guest_memory(&self, addr: u64, buf: &mut Vec<u8>){
+        let borrow = self.mem.lock().unwrap();
+        for mem_region in borrow.iter() {
+            let start = mem_region.mem_offset;
+            let end = mem_region.mem_offset + mem_region.mem_size as u64;
+            if addr >= start && addr + buf.len() as u64 <= end {
+                let data = mem_region.read((addr - mem_region.mem_offset) as usize, buf.len()).unwrap();
+                *buf = data;
+            }
+        }
+    }
+
+    pub fn write_u8(&mut self, addr: u64, val: u8){
+        const LENGTH: u64 = 1;
+
+        let borrow = self.mem.lock().unwrap();
+        for mem_region in borrow.iter() {
+            let start = mem_region.mem_offset;
+            let end = mem_region.mem_offset + mem_region.mem_size as u64;
+            if addr >= start && addr + LENGTH <= end {
+                let data = &val.to_le_bytes();
+                mem_region.write(data, (addr - mem_region.mem_offset) as usize);
+                return;
+            }
+        }
+        println!("Virtio wrote a addr outside of mapped scope!");
     }
 
     pub fn write_u16(&mut self, addr: u64, val: u16){
