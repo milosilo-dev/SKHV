@@ -1,35 +1,21 @@
 #include "memmap.h"
 #include "../headers/serial.h"
+#include "../headers/memmap.h"
 #include <stdint.h>
-
-#define MEMMAP_MAX_ENTRIES 16
-#define MEMMAP_MGK_NUM 0xFE02FE02
-
-typedef struct {
-    uint64_t start;
-    uint64_t end;
-    uint32_t type;
-} __attribute__((packed)) MemMapEntry;
-
-typedef struct {
-    uint32_t mgk_num;
-    uint32_t length;
-} __attribute__((packed)) MemMapHeader;
 
 MemMapEntry memmap[MEMMAP_MAX_ENTRIES];
 
 void init_memmap() {
-    MemMapHeader* header = (MemMapHeader *)0x7000;
+    MemMapHeader* header = (MemMapHeader *)MEMMAP_ADDR;
 
     if (header->mgk_num == MEMMAP_MGK_NUM) {
         uint32_t length = header->length;
         memmap_length = length;
         serial_putx(length); serial_puts("\n");
-        for (int i = 0; i < length; i++) {
-            if (i - 1 < MEMMAP_MAX_ENTRIES) {
-                MemMapEntry* entry = (MemMapEntry *)((uint8_t *)0x7000 + 8 + i * 20);
+        for (uint32_t i = 0; i < length && i < MEMMAP_MAX_ENTRIES; i++) {
+            MemMapEntry* entry = memmap_entry(i);
+            if (entry)
                 memmap[i] = *entry;
-            }
         }
     }
 }
@@ -62,7 +48,16 @@ uint32_t memmap_to_uefi(EFI_MEMORY_DESCRIPTOR* buf, uint32_t length) {
 
         buf[out].NumberOfPages = pages;
 
-        buf[out].Attribute = EFI_MEMORY_WB;
+        // Runtime services regions must carry the runtime attribute so the
+        // OS keeps them mapped while setting up EFI virtual mode; otherwise
+        // Linux's should_map_region() skips them and later faults reading
+        // the map/runtime tables through the EFI page tables.
+        if (entry->type == 5 /* EfiRuntimeServicesCode */
+            || entry->type == 6 /* EfiRuntimeServicesData */) {
+            buf[out].Attribute = EFI_MEMORY_WB | EFI_MEMORY_RUNTIME;
+        } else {
+            buf[out].Attribute = EFI_MEMORY_WB;
+        }
 
         out++;
     }

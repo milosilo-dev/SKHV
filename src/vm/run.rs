@@ -1,10 +1,10 @@
 use kvm_ioctls::VcpuExit;
-use std::io::Write;
 use std::sync::Arc;
 use crossterm::terminal::disable_raw_mode;
 
 use crate::vm::vm::VirtualMachine;
 
+#[derive(Debug)]
 pub enum CrashReason {
     Hlt,
     FailedEntry,
@@ -28,9 +28,7 @@ impl VirtualMachine {
             let exit = match vcpu.fd.run() {
                 Ok(exit) => exit,
 
-                Err(e) if e.errno() == libc::EINTR => {
-                    continue;
-                }
+                Err(e) if matches!(e.errno(), libc::EINTR | libc::EAGAIN) => continue,
 
                 Err(_) => return Err(CrashReason::RunError),
             };
@@ -40,14 +38,11 @@ impl VirtualMachine {
                     let regs = vcpu.fd.get_regs().ok();
 
                     if let Some(regs) = regs {
-                        println!("KVM_EXIT_HLT at RIP={:#x}", regs.rip);
+                        eprint!("KVM_EXIT_HLT at RIP={:#x}\n\r", regs.rip);
                     } else {
-                        println!("KVM_EXIT_HLT");
+                        eprint!("KVM_EXIT_HLT\n\r");
                     }
-
-                    std::io::stdout().flush().ok();
-
-                    return Err(CrashReason::Hlt);
+                    continue;
                 }
 
                 VcpuExit::IoOut(port, data) => {
@@ -139,12 +134,14 @@ impl VirtualMachine {
             std::thread::spawn(move || {
                 loop {
                     let ret = vm.run(vcpu_id);
-                    if ret.is_err() {
+                    if let Err(reason) = ret {
                         disable_raw_mode().unwrap();
-                        panic!("VCPU 0x{:X} crashed!\n", vcpu_id);
+                        eprintln!("VCPU 0x{:X} crashed: {:?}\n", vcpu_id, reason);
+                        std::process::exit(0);
                     }
                 }
             });
         }
+        loop {}
     }
 }

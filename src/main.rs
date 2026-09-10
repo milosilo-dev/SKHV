@@ -1,10 +1,6 @@
 use std::{
-    fs::{self, File},
-    os::fd::AsRawFd,
-    path::PathBuf,
+    fs::{self, File}, os::fd::AsRawFd, path::PathBuf, sync::Arc,
 };
-
-use crossterm::terminal::disable_raw_mode;
 
 use ferrumvm::{
     device_maps::{io::IODeviceRegion, mmio::MMIODeviceRegion},
@@ -70,7 +66,7 @@ fn main() {
     let fuse = Box::new(MMIOTransport::new(
         Box::new(FsVirtio::new(
             "Self",
-            SharedFolder::new(PathBuf::from("/home/miles/Data/FerrumVM/")),
+            SharedFolder::new(PathBuf::from("/home/miles/Data/FerrumVM-selfhost/")),
         )),
         2,
         7,
@@ -81,7 +77,7 @@ fn main() {
 
     let mut machine_config = MachineConfig {
         memory_regions: vec![MemoryRegionConfig {
-            mem_size: 1024 * 1024 * 1024, // 1Gb
+            mem_size: 4 * 1024 * 1024 * 1024, // 4 GiB
             mem_offset: 0x0000,
         }],
         binaries: vec![
@@ -97,27 +93,19 @@ fn main() {
             IODeviceRegion::new(0x70..=0x71, cmos),
         ],
         mmio_devices: vec![
-            MMIODeviceRegion::new(0xFFF00000..=0xFFF00FFF, rng),
-            MMIODeviceRegion::new(0xFFF01000..=0xFFF01FFF, cnt),
-            MMIODeviceRegion::new(0xFFF02000..=0xFFF02FFF, blk),
-            MMIODeviceRegion::new(0xFFF03000..=0xFFF03FFF, net),
-            MMIODeviceRegion::new(0xFFF04000..=0xFFF04FFF, fuse),
+            MMIODeviceRegion::new(0x400000000..=0x400000FFF, rng),
+            MMIODeviceRegion::new(0x400001000..=0x400001FFF, cnt),
+            MMIODeviceRegion::new(0x400002000..=0x400002FFF, blk),
+            MMIODeviceRegion::new(0x400003000..=0x400003FFF, net),
+            MMIODeviceRegion::new(0x400004000..=0x400004FFF, fuse),
         ],
         irq_map: IrqMap::default_map(),
         code_entry: 0xFFF0, // CPU starts executing here
-        total_vcpus: 2,
+        total_vcpus: 8,
     };
     machine_config.inject_memmap();
+    machine_config.inject_acpi_tables();
 
-    let mut vm = VirtualMachine::new(machine_config);
-
-    loop {
-        let ret = vm.run(0);
-        if ret.is_err() {
-            break;
-        }
-    }
-
-    disable_raw_mode().unwrap();
-    print!("VM Crash!\n");
+    let vm = VirtualMachine::new(machine_config);
+    VirtualMachine::threaded_run(Arc::new(vm));
 }
